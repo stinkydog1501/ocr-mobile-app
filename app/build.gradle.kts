@@ -95,4 +95,7 @@ dependencies {
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Phase 2: OpenCV for image preprocessing
+    implementation("org.opencv:opencv:4.9.0")
 }

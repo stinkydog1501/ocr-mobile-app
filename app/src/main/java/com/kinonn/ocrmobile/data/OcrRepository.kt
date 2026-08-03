@@ -33,6 +33,12 @@ interface OcrRepository {
 /**
  * Runs the OCR pipeline off the main thread and streams progress:
  * image → engine.recognize() → type detection → field extraction → ParsedDocument.
+ *
+ * Low-confidence results are surfaced through [ParsedDocument.needsReview]
+ * (set by [FieldExtractor] when fields fall below threshold or fail
+ * validation) — the review screen prompts the user to re-capture.
+ * Re-running the same image through the same engine would be pointless:
+ * OCR is deterministic for identical input.
  */
 class DefaultOcrRepository @Inject constructor(
     private val engine: OcrEngine,
@@ -53,3 +59,4 @@ class DefaultOcrRepository @Inject constructor(
             emit(ScanProgress.Failed(error.message ?: "OCR failed"))
         }
 }
+
