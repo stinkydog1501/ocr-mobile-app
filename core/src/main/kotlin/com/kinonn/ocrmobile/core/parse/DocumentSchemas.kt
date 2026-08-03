@@ -12,13 +12,6 @@ import com.kinonn.ocrmobile.core.model.VerticalZone
  */
 object DocumentSchemas {
 
-    val all: Map<DocumentType, List<FieldSchema>> = mapOf(
-        DocumentType.NRIC to nric,
-        DocumentType.DRIVERS_LICENSE to driversLicense,
-        DocumentType.BANK_FORM to bankForm,
-        DocumentType.GENERIC to emptyList(),
-    )
-
     val nric: List<FieldSchema> = listOf(
         FieldSchema(
             key = "name",
@@ -115,7 +108,7 @@ object DocumentSchemas {
             key = "amount",
             label = "Amount",
             type = FieldType.AMOUNT,
-            patterns = listOf("[\\$S]?\\s?\\d{1,3}(,\\d{3})*(\\.\\d{2})?"),
+            patterns = listOf("[\$S]?\\s?\\d{1,3}(,\\d{3})*(\\.\\d{2})?"),
             exactBlockMatch = true,
             keywords = listOf("AMOUNT", "SUM"),
             required = true,
@@ -138,4 +131,11 @@ object DocumentSchemas {
 
     /** Field keys used by the UI to render a parsed document. */
     fun keysFor(type: DocumentType): List<String> = all[type].orEmpty().map { it.key }
+
+    val all: Map<DocumentType, List<FieldSchema>> = mapOf(
+        DocumentType.NRIC to nric,
+        DocumentType.DRIVERS_LICENSE to driversLicense,
+        DocumentType.BANK_FORM to bankForm,
+        DocumentType.GENERIC to emptyList(),
+    )
 }

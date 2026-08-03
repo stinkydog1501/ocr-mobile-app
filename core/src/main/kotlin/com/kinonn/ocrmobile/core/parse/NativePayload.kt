@@ -41,8 +41,10 @@ private data class NativePayload(
     @SerialName("latency_ms") val latencyMs: Long = 0,
 )
 
+private val defaultJson = Json { ignoreUnknownKeys = true }
+
 fun parseOcrResult(json: String, engineName: String): OcrResult {
-    val payload = Json { ignoreUnknownKeys = true }.decodeFromString<NativePayload>(json)
+    val payload = defaultJson.decodeFromString<NativePayload>(json)
     return OcrResult(
         blocks = payload.blocks.map { block ->
             OcrBlock(

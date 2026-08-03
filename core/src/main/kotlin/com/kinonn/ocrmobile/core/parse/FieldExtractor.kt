@@ -11,6 +11,7 @@ import com.kinonn.ocrmobile.core.model.ParsedDocument
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.time.format.ResolverStyle
 
 /**
  * Converts raw OCR blocks into structured fields per document-type schema.
@@ -239,14 +240,18 @@ class FieldExtractor(
 
     private object DateUtil {
         private val formats = listOf(
-            "dd-MM-yyyy", "dd/MM/yyyy", "dd.MM.yyyy", "yyyy-MM-dd", "dd MM yyyy",
+            // uuuu (proleptic year) not yyyy (year-of-era): with STRICT resolver,
+            // yyyy cannot resolve to a LocalDate without an explicit era.
+            "dd-MM-uuuu", "dd/MM/uuuu", "dd.MM.uuuu", "uuuu-MM-dd", "dd MM uuuu",
         )
 
         fun isValidDate(value: String): Boolean {
             val trimmed = value.trim()
             for (format in formats) {
                 try {
-                    val date = LocalDate.parse(trimmed, DateTimeFormatter.ofPattern(format))
+                    // STRICT resolver: rejects impossible dates like 31-02-1990
+                    // instead of silently correcting them (SMART default).
+                    val date = LocalDate.parse(trimmed, DateTimeFormatter.ofPattern(format).withResolverStyle(ResolverStyle.STRICT))
                     if (date.year in 1900..2100) return true
                 } catch (_: DateTimeParseException) {
                     // try next format
