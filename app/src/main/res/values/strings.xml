@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OCR Mobile</string>
+
+    <!-- Capture -->
+    <string name="capture_hint">Align the document inside the frame</string>
+    <string name="permission_title">Camera access needed</string>
+    <string name="permission_message">OCR Mobile needs the camera to scan documents. Photos are processed on-device and never leave your phone.</string>
+    <string name="grant_access">Grant camera access</string>
+    <string name="processing_title">Reading document</string>
+    <string name="processing_preparing">Preparing…</string>
+    <string name="dismiss">Dismiss</string>
+
+    <!-- Review -->
+    <string name="review_title">Review</string>
+    <string name="back">Back</string>
+    <string name="retake">Retake</string>
+    <string name="copy_json">Copy JSON</string>
+    <string name="share">Share</string>
+    <string name="show_raw">Show raw text</string>
+    <string name="hide_raw">Hide raw text</string>
+    <string name="needs_review">Some fields need a quick check before you use this result.</string>
+    <string name="check_this_value">Check this value</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+</resources>
