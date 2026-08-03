@@ -2,8 +2,6 @@ package com.kinonn.ocrmobile.util
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.kinonn.ocrmobile.core.ocr.OcrImage
@@ -18,23 +16,60 @@ object ImageDecoding {
     fun decodeToOcrImage(context: Context, uri: Uri, maxDimension: Int = 1600): OcrImage {
         val resolver = context.contentResolver
 
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: error("Cannot read image")
+        // Open the stream once and read all needed data before closing
+        val (bitmap, orientation) = resolver.openInputStream(uri)?.use { stream ->
+            // Read EXIF first while stream is open
+            val exif = try {
+                androidx.exifinterface.media.ExifInterface(stream)
+            } catch (_: Exception) {
+                null
+            }
+            val orient = exif?.getAttributeInt(
+                androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+            ) ?: androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
 
-        var sampleSize = 1
-        while (bounds.outWidth / (sampleSize * 2) >= maxDimension ||
-            bounds.outHeight / (sampleSize * 2) >= maxDimension
-        ) {
-            sampleSize *= 2
-        }
+            // Reset stream position if possible, otherwise reopen
+            if (exif != null && stream.markSupported()) {
+                try {
+                    stream.reset()
+                } catch (_: Exception) {
+                    // Can't reset, fall through
+                }
+            }
 
-        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            ?: error("Cannot decode image")
+            // Decode bounds
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeStream(stream, null, bounds)
+            val srcWidth = bounds.outWidth
+            val srcHeight = bounds.outHeight
 
-        val rotated = rotateByExif(context, uri, decoded)
-        if (rotated !== decoded) decoded.recycle()
+            // Reset stream again for full decode
+            if (stream.markSupported()) {
+                try {
+                    stream.reset()
+                } catch (_: Exception) {
+                    // Fall through
+                }
+            }
+
+            // Decode with sampling
+            var sampleSize = 1
+            while (srcWidth / (sampleSize * 2) >= maxDimension ||
+                srcHeight / (sampleSize * 2) >= maxDimension
+            ) {
+                sampleSize *= 2
+            }
+
+            val options = android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            val bitmap = android.graphics.BitmapFactory.decodeStream(stream, null, options)
+                ?: throw IllegalStateException("Cannot decode image")
+
+            Pair(bitmap, orient)
+        } ?: throw IllegalStateException("Cannot open image")
+
+        val rotated = rotateByOrientation(bitmap, orientation)
+        if (rotated !== bitmap) bitmap.recycle()
 
         val pixels = IntArray(rotated.width * rotated.height)
         rotated.getPixels(pixels, 0, rotated.width, 0, 0, rotated.width, rotated.height)
@@ -49,25 +84,17 @@ object ImageDecoding {
         return OcrImage(rgb, rotated.width, rotated.height)
     }
 
-    private fun rotateByExif(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
-        val orientation = try {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                ExifInterface(stream)
-                    .getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-            } ?: ExifInterface.ORIENTATION_NORMAL
-        } catch (_: IOException) {
-            ExifInterface.ORIENTATION_NORMAL
-        }
+    private fun rotateByOrientation(bitmap: android.graphics.Bitmap, orientation: Int): android.graphics.Bitmap {
         return when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> rotate(bitmap, 90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> rotate(bitmap, 180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> rotate(bitmap, 270f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> rotate(bitmap, 90f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> rotate(bitmap, 180f)
+            androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> rotate(bitmap, 270f)
             else -> bitmap
         }
     }
 
-    private fun rotate(bitmap: Bitmap, degrees: Float): Bitmap {
-        val matrix = Matrix().apply { postRotate(degrees) }
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    private fun rotate(bitmap: android.graphics.Bitmap, degrees: Float): android.graphics.Bitmap {
+        val matrix = android.graphics.Matrix().apply { postRotate(degrees) }
+        return android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 }

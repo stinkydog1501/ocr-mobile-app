@@ -2,6 +2,7 @@ package com.kinonn.ocrmobile.ocr
 
 import android.content.Context
 import android.content.res.AssetManager
+import android.util.Log
 import com.kinonn.ocrmobile.core.model.OcrResult
 import com.kinonn.ocrmobile.core.ocr.OcrEngine
 import com.kinonn.ocrmobile.core.ocr.OcrImage
@@ -19,7 +20,7 @@ import com.kinonn.ocrmobile.core.parse.parseOcrResult
  *   {"latency_ms": N, "blocks": [{"text": "...", "confidence": 0.x,
  *     "box": {"left":..,"top":..,"right":..,"bottom":..}}]}
  */
-class PaddleLiteOcrEngine(context: Context) : OcrEngine {
+class PaddleLiteOcrEngine(context: Context) : OcrEngine, AutoCloseable {
 
     override val name: String = "pp-ocrv5-mobile"
 
@@ -35,17 +36,38 @@ class PaddleLiteOcrEngine(context: Context) : OcrEngine {
         }
         nativeReady = loaded
         if (loaded) {
-            nativePtr = nativeInit(context.assets, MODEL_DET, MODEL_REC, MODEL_CLS)
+            try {
+                nativePtr = nativeInit(context.assets, MODEL_DET, MODEL_REC, MODEL_CLS)
+            } catch (e: Exception) {
+                // Init failed, nativePtr stays 0
+                android.util.Log.e("PaddleLiteOcrEngine", "nativeInit failed", e)
+            }
         }
     }
 
     override suspend fun recognize(image: OcrImage): OcrResult {
-        check(nativeReady) {
-            "Paddle Lite native library is not bundled. Add libpaddle_lite_jni.so and " +
-                "model .nb files (see README, Phase 1) or run a debug build with the demo engine."
+        check(nativeReady && nativePtr != 0L) {
+            "Paddle Lite native library is not bundled or failed to initialize. " +
+                "Add libpaddle_lite_jni.so and model .nb files (see README, Phase 1) " +
+                "or run a debug build with the demo engine."
         }
         val json = nativeRunOcr(nativePtr, image.pixelsRgb, image.width, image.height)
         return parseOcrResult(json, engineName = name)
+    }
+
+    override fun close() {
+        if (nativeReady && nativePtr != 0L) {
+            try {
+                nativeRelease(nativePtr)
+            } catch (e: Exception) {
+                android.util.Log.e("PaddleLiteOcrEngine", "nativeRelease failed", e)
+            }
+            nativePtr = 0L
+        }
+    }
+
+    protected fun finalize() {
+        close()
     }
 
     private external fun nativeInit(
@@ -58,11 +80,6 @@ class PaddleLiteOcrEngine(context: Context) : OcrEngine {
     private external fun nativeRunOcr(ptr: Long, rgb: ByteArray, width: Int, height: Int): String
 
     private external fun nativeRelease(ptr: Long)
-
-    @Suppress("DEPRECATION")
-    protected fun finalize() {
-        if (nativeReady && nativePtr != 0L) nativeRelease(nativePtr)
-    }
 
     companion object {
         private const val MODEL_DET = "models/det.nb"

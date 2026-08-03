@@ -136,8 +136,12 @@ fun CaptureScreen(
                 override fun onImageSaved(results: ImageCapture.OutputFileResults) {
                     scope.launch {
                         try {
-                            viewModel.scan(ImageDecoding.decodeToOcrImage(context, Uri.fromFile(file)))
+                            // Decode synchronously into memory, then delete the temp file
+                            val image = ImageDecoding.decodeToOcrImage(context, Uri.fromFile(file))
+                            file.delete()
+                            viewModel.scan(image)
                         } catch (e: Exception) {
+                            file.delete()
                             viewModel.reportCaptureError(e.message ?: "Failed to read captured image")
                         }
                     }
@@ -184,7 +188,7 @@ fun CaptureScreen(
         cameraProviderFuture.addListener(listener, executor)
         onDispose {
             cameraProviderFuture.removeListener(listener)
-            runCatching { cameraProviderFuture.get() }.onSuccess { it.unbindAll() }
+            runCatching { cameraProviderFuture.get().unbindAll() }
         }
     }
 

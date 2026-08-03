@@ -90,15 +90,23 @@ class ReviewViewModel @Inject constructor(
     }
 
     private fun buildOutputJson(): String {
-        val output = JsonObject(
-            buildMap {
-                put("document_type", JsonPrimitive(document.documentType.name))
-                put("completed_at", JsonPrimitive(document.completedAt))
-                put(
-                    "fields",
-                    JsonObject(_uiState.value.fields.associate { it.key to JsonPrimitive(it.value) }),
+        val fieldsJson = JsonObject(
+            _uiState.value.fields.associate { field ->
+                field.key to JsonObject(
+                    mapOf(
+                        "value" to JsonPrimitive(field.value),
+                        "confidence" to JsonPrimitive(field.confidence),
+                        "needsManualEntry" to JsonPrimitive(field.needsManualEntry),
+                    )
                 )
             }
+        )
+        val output = JsonObject(
+            mapOf(
+                "document_type" to JsonPrimitive(document.documentType.name),
+                "completed_at" to JsonPrimitive(document.completedAt),
+                "fields" to fieldsJson,
+            )
         )
         return Json { prettyPrint = true }.encodeToString(JsonElement.serializer(), output)
     }
