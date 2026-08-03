@@ -1,0 +1,89 @@
+# Cross-platform line endings
+# Enforce LF for all text files (Android standard)
+* text=auto eol=lf
+
+# Explicitly mark binary files to prevent line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.nb binary
+*.so binary
+*.aar binary
+*.jar binary
+*.apk binary
+*.aab binary
+*.keystore binary
+*.jks binary
+
+# Fonts
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+
+# Audio/video
+*.mp3 binary
+*.mp4 binary
+*.ogg binary
+*.wav binary
+*.webm binary
+
+# Android build outputs (binary)
+*.dex binary
+*.class binary
+
+# Executable scripts - preserve Unix line endings and executable bit
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows batch files - preserve CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Source files - explicit LF
+*.kt text eol=lf
+*.java text eol=lf
+*.kts text eol=lf
+*.xml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.properties text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Gradle wrapper - mark as executable
+gradlew linguist-executable
+gradle/wrapper/gradle-wrapper.jar linguist-executable
+
+# Proguard rules
+*.pro text eol=lf
+
+# C/C++ native code
+*.cpp text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+
+# Configuration files
+*.config text eol=lf
+*.cfg text eol=lf
+
+# Diff/patch files
+*.diff text eol=lf
+*.patch text eol=lf
+
+# Export-ignore: exclude from `git archive`
+.gitattributes export-ignore
+.gitignore export-ignore
+local.properties export-ignore
+*.iml export-ignore
+.idea/ export-ignore
+build/ export-ignore
+.gradle/ export-ignore
+captures/ export-ignore
+.externalNativeBuild/ export-ignore
+.cxx/ export-ignore
