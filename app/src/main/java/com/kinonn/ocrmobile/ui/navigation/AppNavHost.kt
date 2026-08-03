@@ -10,6 +10,7 @@ import androidx.navigation.navArgument
 import com.kinonn.ocrmobile.core.model.ParsedDocument
 import com.kinonn.ocrmobile.ui.capture.CaptureScreen
 import com.kinonn.ocrmobile.ui.review.ReviewScreen
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 object Routes {

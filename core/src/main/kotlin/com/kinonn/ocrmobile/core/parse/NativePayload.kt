@@ -5,6 +5,7 @@ import com.kinonn.ocrmobile.core.model.OcrBlock
 import com.kinonn.ocrmobile.core.model.OcrResult
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 /**
