@@ -63,7 +63,7 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 - Uses `DemoOcrEngine` (simulated NRIC scan)
 - No native OCR library required (OpenCV native lib is still bundled for preprocessing)
 - Fast iteration for UI development
-- APK size: ~15MB (OpenCV arm64 native library included)
+- APK size: ~80MB (OpenCV arm64 native library included — measured arm64-v8a debug build)
 
 ### Release build
 
@@ -91,7 +91,7 @@ native integration enabled (`-PwithNative`):
 ./gradlew :app:assembleRelease -PwithNative
 ```
 
-APK size with models: ~25-30MB
+Release APK size not yet measured (the OpenCV AAR dominates; the debug APK is ~80MB, and bundling the `.nb` models adds the model sizes on top).
 
 ## Signing
 
@@ -141,6 +141,9 @@ CameraX capture / gallery picker
 ImageDecoding (ImageDecoder → EXIF rotation → downsample to 1600px)
         │  Bitmap
         ▼
+Edit / Adjust — rotate ±90° / ±5° + draggable crop   ← Phase 3
+        │  adjusted Bitmap
+        ▼
 Phase 2 preprocessing (OpenCV — degrades to original if unavailable)
   deskew → handwriting detect? → (optimize) → adaptive binarize
         │  OcrImage (RGB888)
@@ -151,7 +154,7 @@ OcrEngine.recognize()            ← DemoOcrEngine (debug) | PaddleLiteOcrEngine
 FieldExtractor.detectDocumentType() + parse()
         │  ParsedDocument (fields + confidence + provenance)
         ▼
-Review screen — editable fields, confidence badges, JSON copy/share
+Review screen — editable fields, confidence badges, detected-text-box overlay, JSON copy/share
 ```
 
 ### Design decisions
@@ -181,7 +184,7 @@ ocr-mobile-app/
 ├── app/                           # Android module
 │   ├── src/main/
 │   │   ├── java/com/kinonn/ocrmobile/
-│   │   │   ├── ui/                # Compose screens (Capture, Review)
+│   │   │   ├── ui/                # Compose screens (Capture, Edit, Review)
 │   │   │   ├── data/              # Repository, OcrRepository
 │   │   │   ├── di/                # Hilt DI modules
 │   │   │   ├── image/             # Phase 2: ImagePreprocessor, HandwritingOptimizer (OpenCV)
@@ -292,7 +295,7 @@ val all: Map<DocumentType, List<FieldSchema>> = mapOf(
 3. Build with native integration:
 
 ```bash
-./gradlew :app:assembleRelease
+./gradlew :app:assembleRelease -PwithNative
 ```
 
 ### Install on device
@@ -315,9 +318,9 @@ Not yet configured. Future work:
 
 - [x] Implement DB/CRNN post-processing in JNI glue (`app/src/main/cpp/paddle_ocr_jni.cpp`,
       algorithm core in `ocr_postprocess.h` — host unit-tested, see `native_tests/`)
-- [x] Build Paddle Lite native library for arm64 (automated by `scripts/fetch_phase1_assets.sh`;
-      `.so` compile is a workstation step — this Pi has no Android NDK)
-- [x] Convert PP-OCRv5_mobile models to `.nb` (automated conversion in the same script)
+- [ ] Build Paddle Lite native library for arm64 — *automated by `scripts/fetch_phase1_assets.sh`,
+      but the `.so` compile is a pending workstation step (this Pi has no Android NDK)*
+- [ ] Convert PP-OCRv5_mobile models to `.nb` — *automated conversion in the same script; not yet run*
 - [ ] Benchmark accuracy/latency on real documents — *requires a physical device*
 - [ ] Tune preprocessing against real PP-OCRv5 output — *requires the benchmarks above*
 
@@ -360,10 +363,10 @@ Not yet configured. Future work:
 - [ ] Accessibility audit (TalkBack, high contrast)
 - [ ] Localization (Chinese, Malay, Tamil)
 
-### Phase 5: Additional Document Types
+### Phase 5: Additional Document Types (partial)
 
-- [ ] Singapore driver's license
-- [ ] Bank deposit slips
+- [x] Singapore driver's license (`DocumentType.DRIVERS_LICENSE`)
+- [x] Bank deposit slips (`DocumentType.BANK_FORM`)
 - [ ] Utility bills
 - [ ] Multi-page forms
 
@@ -381,7 +384,7 @@ Not yet configured. Future work:
 |---|---|
 | OCR engine | **PP-OCRv5_mobile** (Baidu PaddleOCR 3.x) via Paddle Lite — det + cls + rec, quantized, arm64 |
 | Image processing | OpenCV 4.9.0 (`org.opencv:opencv` AAR) — deskew, CLAHE contrast, adaptive binarization, handwriting detection |
-| Language | Kotlin 2.0, Jetpack Compose (Material 3, dynamic color) |
+| Language | Kotlin 2.2 (KSP 2.2.20), Jetpack Compose (Material 3, dynamic color) |
 | Architecture | Multi-module (`:core` pure JVM + `:app` Android), MVVM + Repository, Hilt DI, Flow/StateFlow |
 | Camera | CameraX (single capture, flash, gallery picker) |
 | Serialization | kotlinx.serialization |
