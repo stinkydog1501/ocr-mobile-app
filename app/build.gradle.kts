@@ -62,6 +62,18 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // Phase 1 native integration is OPT-IN so demo/debug builds never need an
+    // NDK or Paddle Lite. Enable with: ./gradlew :app:assembleRelease -PwithNative
+    // (see app/src/main/cpp/CMakeLists.txt for the required -DVars).
+    if (project.hasProperty("withNative")) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
+    }
 }
 
 dependencies {

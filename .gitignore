@@ -10,3 +10,9 @@ build/
 *.apk
 *.aab
 *.keystore
+
+# Phase 1 native runtime assets (fetched by scripts/fetch_phase1_assets.sh)
+/phase1
+/.phase1
+/app/src/main/assets/models/*.nb
+/app/src/main/jniLibs/
