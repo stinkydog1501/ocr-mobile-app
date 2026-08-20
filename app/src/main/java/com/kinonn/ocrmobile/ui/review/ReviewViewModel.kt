@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
+import com.kinonn.ocrmobile.core.model.BoundingBox
 import com.kinonn.ocrmobile.core.model.ParsedDocument
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -36,6 +38,8 @@ data class ReviewUiState(
     val needsReview: Boolean,
     val fields: List<FieldUi>,
     val rawText: String,
+    val imagePath: String? = null,
+    val blocks: List<BoundingBox> = emptyList(),
 )
 
 sealed interface ReviewEvent {
@@ -51,6 +55,14 @@ class ReviewViewModel @Inject constructor(
         savedStateHandle.get<String>(DOCUMENT_ARG) ?: error("Missing $DOCUMENT_ARG argument")
     )
 
+    private val imagePath: String? = savedStateHandle.get<String>(IMAGE_ARG)
+
+    private val blocks: List<BoundingBox> = runCatching {
+        Json.decodeFromString<List<BoundingBox>>(
+            savedStateHandle.get<String>(BLOCKS_ARG).orEmpty()
+        )
+    }.getOrDefault(emptyList())
+
     private val _uiState = MutableStateFlow(
         ReviewUiState(
             documentType = document.documentType.displayName,
@@ -60,6 +72,8 @@ class ReviewViewModel @Inject constructor(
                 FieldUi(it.key, it.label, it.value, it.confidence, it.needsManualEntry)
             },
             rawText = document.rawText,
+            imagePath = imagePath,
+            blocks = blocks,
         )
     )
     val uiState: StateFlow<ReviewUiState> = _uiState.asStateFlow()
@@ -113,5 +127,7 @@ class ReviewViewModel @Inject constructor(
 
     companion object {
         const val DOCUMENT_ARG = "documentJson"
+        const val IMAGE_ARG = "imagePath"
+        const val BLOCKS_ARG = "blocksJson"
     }
 }

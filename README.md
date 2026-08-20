@@ -202,12 +202,15 @@ Covers:
 - Date/amount validation
 - Confidence scoring
 
-**Android module**: The `:app` module cannot compile on ARM64 Linux hosts (Google
-ships x86-64 `aapt2` only). Phase 2 code is verified by compiling the touched
-sources standalone with `kotlinc` against `android.jar` + the OpenCV 4.9.0 AAR
-classes, plus a full `:core` test run. Build the APK on an x86-64 workstation:
+**Android module**: Google ships an x86-64-only `aapt2`, which historically blocked
+building `:app` on ARM64 Linux hosts. On ARM64 Linux install the arm64 build-tools
+from [`Commit451/android-arm-build-tools`](https://github.com/Commit451/android-arm-build-tools)
+(e.g. run its `install.sh --sdk <SDK>` for build-tools 35.0.0) and add the
+`android.aapt2FromMavenOverride=<path-to-aapt2>` to `~/.gradle/gradle.properties`
+(machine-local — do not commit). Then the normal Gradle build works on ARM64:
 
 ```bash
+./gradlew :core:test
 ./gradlew :app:assembleDebug
 ```
 
@@ -324,12 +327,15 @@ Not yet configured. Future work:
 > captured photo dataset) and benchmark preprocessing impact once Phase 1 ships
 > the real engine.
 
-### Phase 3: UX Polish
+### Phase 3: UX Polish ✅ implemented
 
-- [ ] Add image preview with detected text boxes overlay
-- [ ] Implement document cropping/rotation UI
-- [ ] Add flash toggle in processing screen
-- [ ] Improve error messages and retry flows
+- [x] Add image preview with detected text boxes overlay (review screen draws the
+      recognized text boxes over the scanned image)
+- [x] Implement document cropping/rotation UI (new "Adjust" step: rotate 90° / ±5°,
+      draggable crop frame, then Scan & Review)
+- [x] Add flash toggle in processing screen (capture viewfinder flash toggle)
+- [x] Improve error messages and retry flows (retry action on capture errors,
+      clear recovery from failure)
 
 ### Phase 4: Production Hardening
 

@@ -7,6 +7,8 @@ import android.net.Uri
 import com.kinonn.ocrmobile.core.ocr.OcrImage
 import com.kinonn.ocrmobile.image.HandwritingOptimizer
 import com.kinonn.ocrmobile.image.ImagePreprocessor
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Decodes a captured/gallery image into the engine's RGB888 format.
@@ -23,7 +25,26 @@ object ImageDecoding {
     private val preprocessor by lazy { ImagePreprocessor() }
     private val handwritingOptimizer by lazy { HandwritingOptimizer() }
 
+    /** A decoded scan: the engine input plus a preview bitmap for the UI. */
+    data class DecodedScan(val ocrImage: OcrImage, val preview: Bitmap)
+
+    /**
+     * Decode, preprocess and keep the processed bitmap as a preview (used by
+     * the edit step and the review overlay). Caller owns [preview] (recycle it).
+     */
+    fun decodeForScan(context: Context, uri: Uri, maxDimension: Int = 1600): DecodedScan {
+        val processed = decodeBitmap(context, uri, maxDimension)
+        val (rgb, width, height) = bitmapToRgb888(processed)
+        return DecodedScan(OcrImage(rgb, width, height), processed)
+    }
+
     fun decodeToOcrImage(context: Context, uri: Uri, maxDimension: Int = 1600): OcrImage {
+        val bitmap = decodeBitmap(context, uri, maxDimension)
+        bitmap.recycle()
+        return bitmapToOcrImage(bitmap)
+    }
+
+    fun decodeBitmap(context: Context, uri: Uri, maxDimension: Int = 1600): Bitmap {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         val decoded = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
             // Downsample so the longest side stays within maxDimension
@@ -40,12 +61,24 @@ object ImageDecoding {
             decoded
         }
         if (processed !== decoded) decoded.recycle()
+        return processed
+    }
 
-        val (rgb, width, height) = bitmapToRgb888(processed)
-        processed.recycle()
+    /** Persist a bitmap as a JPEG in the cache dir; returns the absolute path. */
+    fun cacheBitmap(context: Context, bitmap: Bitmap, prefix: String = "scan"): String {
+        val file = File(context.cacheDir, "${prefix}_${System.currentTimeMillis()}.jpg")
+        FileOutputStream(file).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        }
+        return file.absolutePath
+    }
 
+    /** Convert an edited Bitmap back to an engine input. */
+    fun toOcrImage(bitmap: Bitmap): OcrImage {
+        val (rgb, width, height) = bitmapToRgb888(bitmap)
         return OcrImage(rgb, width, height)
     }
+
 
     /**
      * Phase 2 preprocessing chain, each step degrading to identity when the
@@ -98,5 +131,10 @@ object ImageDecoding {
             rgb[i * 3 + 2] = (pixels[i] and 0xFF).toByte()        // B
         }
         return Triple(rgb, width, height)
+    }
+
+    private fun bitmapToOcrImage(bitmap: Bitmap): OcrImage {
+        val (rgb, width, height) = bitmapToRgb888(bitmap)
+        return OcrImage(rgb, width, height)
     }
 }

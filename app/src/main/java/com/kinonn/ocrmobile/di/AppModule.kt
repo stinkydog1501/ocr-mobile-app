@@ -5,6 +5,8 @@ import com.kinonn.ocrmobile.BuildConfig
 import com.kinonn.ocrmobile.core.ocr.DemoOcrEngine
 import com.kinonn.ocrmobile.core.ocr.OcrEngine
 import com.kinonn.ocrmobile.core.parse.FieldExtractor
+import com.kinonn.ocrmobile.data.DefaultOcrRepository
+import com.kinonn.ocrmobile.data.OcrRepository
 import com.kinonn.ocrmobile.ocr.PaddleLiteOcrEngine
 import dagger.Module
 import dagger.Provides
@@ -20,6 +22,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideFieldExtractor(): FieldExtractor = FieldExtractor()
+
+    @Provides
+    @Singleton
+    fun provideOcrRepository(engine: OcrEngine, extractor: FieldExtractor): OcrRepository =
+        DefaultOcrRepository(engine, extractor)
 
     @Provides
     @Singleton

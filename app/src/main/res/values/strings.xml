@@ -10,6 +10,20 @@
     <string name="processing_title">Reading document</string>
     <string name="processing_preparing">Preparing…</string>
     <string name="dismiss">Dismiss</string>
+    <string name="retry">Retry</string>
+    <string name="toggle_flash">Toggle flash</string>
+    <string name="pick_from_gallery">Pick from gallery</string>
+
+    <!-- Edit (crop / rotate) -->
+    <string name="edit_title">Adjust</string>
+    <string name="edit_preview">Captured image</string>
+    <string name="edit_no_image">No image to edit. Go back and capture again.</string>
+    <string name="rotate_left">Rotate left</string>
+    <string name="rotate_right">Rotate right</string>
+    <string name="apply_crop">Crop</string>
+    <string name="crop_reset">Reset</string>
+    <string name="cancel">Cancel</string>
+    <string name="scan_and_review">Scan &amp; review</string>
 
     <!-- Review -->
     <string name="review_title">Review</string>
