@@ -71,16 +71,25 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :app:assembleRelease
 ```
 
-**Requires Phase 1 integration** (native OCR library + models):
+**Requires Phase 1 integration** (native OCR library + models). Run
+`scripts/fetch_phase1_assets.sh` on an x86-64 workstation (NDK + OpenCV-android-sdk) — it
+downloads Paddle Lite, converts the models and places everything here:
 
-1. Build Paddle Lite native library for arm64
-2. Convert PP-OCRv5_mobile models to `.nb` format
-3. Place models in `app/src/main/assets/models/`:
-   - `det.nb` (text detection)
-   - `rec.nb` (text recognition)
-   - `cls.nb` (text orientation classification)
-   - `ppocr_keys_v1.txt` (recognition dictionary)
-4. Configure release signing (see [Signing](#signing))
+```
+app/src/main/assets/models/
+├── det.nb                # text detection (converted)
+├── rec.nb                # text recognition (converted)
+├── cls.nb                # text orientation classification (converted)
+└── ppocr_keys_v1.txt     # recognition dictionary (committed)
+app/src/main/jniLibs/arm64-v8a/libpaddle_lite_jni.so
+```
+
+Then configure release signing (see [Signing](#signing)) and build the signed APK with the
+native integration enabled (`-PwithNative`):
+
+```bash
+./gradlew :app:assembleRelease -PwithNative
+```
 
 APK size with models: ~25-30MB
 
@@ -274,10 +283,10 @@ val all: Map<DocumentType, List<FieldSchema>> = mapOf(
 
 ### Build release APK
 
-1. Integrate native OCR library (Phase 1 — not yet implemented)
-2. Convert and bundle PP-OCRv5_mobile models
-3. Configure release signing (see [Signing](#signing))
-4. Build:
+1. Build the native library + convert models: `scripts/fetch_phase1_assets.sh` (run on an
+   x86-64 workstation with the NDK + OpenCV-android-sdk; see its header)
+2. Configure release signing (see [Signing](#signing))
+3. Build with native integration:
 
 ```bash
 ./gradlew :app:assembleRelease
@@ -299,13 +308,19 @@ Not yet configured. Future work:
 
 ## Roadmap
 
-### Phase 1: Native OCR Integration (current focus)
+### Phase 1: Native OCR Integration ✅ mostly implemented
 
-- [ ] Build Paddle Lite native library for arm64
-- [ ] Convert PP-OCRv5_mobile models to `.nb` format
-- [ ] Implement DB/CRNN post-processing in JNI glue
-- [ ] Benchmark accuracy/latency on real documents
-- [ ] Tune preprocessing (deskew, contrast) against real PP-OCRv5 output
+- [x] Implement DB/CRNN post-processing in JNI glue (`app/src/main/cpp/paddle_ocr_jni.cpp`,
+      algorithm core in `ocr_postprocess.h` — host unit-tested, see `native_tests/`)
+- [x] Build Paddle Lite native library for arm64 (automated by `scripts/fetch_phase1_assets.sh`;
+      `.so` compile is a workstation step — this Pi has no Android NDK)
+- [x] Convert PP-OCRv5_mobile models to `.nb` (automated conversion in the same script)
+- [ ] Benchmark accuracy/latency on real documents — *requires a physical device*
+- [ ] Tune preprocessing against real PP-OCRv5 output — *requires the benchmarks above*
+
+> Phase 1 production run still needs: run `scripts/fetch_phase1_assets.sh` on an x86-64
+> workstation with the NDK + OpenCV-android-sdk, `./gradlew :app:assembleRelease -PwithNative`,
+> then verify on-device accuracy/latency before tuning thresholds.
 
 ### Phase 2: Accuracy Improvements ✅ implemented
 
