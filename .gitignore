@@ -11,6 +11,9 @@ build/
 *.aab
 *.keystore
 
+# Kotlin/Gradle
+.kotlin/
+
 # Phase 1 native runtime assets (fetched by scripts/fetch_phase1_assets.sh)
 /phase1
 /.phase1

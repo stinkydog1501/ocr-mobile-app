@@ -1,12 +1,11 @@
 package com.kinonn.ocrmobile.ui.capture
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.kinonn.ocrmobile.core.model.ParsedDocument
-import com.kinonn.ocrmobile.core.ocr.OcrImage
-import com.kinonn.ocrmobile.data.OcrRepository
-import com.kinonn.ocrmobile.data.ScanProgress
-import com.kinonn.ocrmobile.data.ScanStep
+import com.kinonn.ocrmobile.data.ScanSession
+import com.kinonn.ocrmobile.util.ImageDecoding
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -19,18 +18,16 @@ import javax.inject.Inject
 
 data class CaptureUiState(
     val isProcessing: Boolean = false,
-    val step: ScanStep? = null,
     val error: String? = null,
 )
 
 sealed interface CaptureEvent {
-    data class NavigateToReview(val document: ParsedDocument) : CaptureEvent
+    /** User captured/selected an image; ready to open the edit step. */
+    data object NavigateToEditor : CaptureEvent
 }
 
 @HiltViewModel
-class CaptureViewModel @Inject constructor(
-    private val repository: OcrRepository,
-) : ViewModel() {
+class CaptureViewModel @Inject constructor() : ViewModel() {
 
     private val _uiState = MutableStateFlow(CaptureUiState())
     val uiState: StateFlow<CaptureUiState> = _uiState.asStateFlow()
@@ -38,21 +35,22 @@ class CaptureViewModel @Inject constructor(
     private val _events = Channel<CaptureEvent>(Channel.BUFFERED)
     val events: Flow<CaptureEvent> = _events.receiveAsFlow()
 
-    fun scan(image: OcrImage) {
+    /**
+     * Decode a captured/selected image, preprocess it, persist a preview into
+     * the scan session, then hand off to the edit (crop/rotate) step.
+     */
+    fun onImagePicked(context: Context, uri: Uri) {
         if (_uiState.value.isProcessing) return
         _uiState.value = CaptureUiState(isProcessing = true)
         viewModelScope.launch {
-            repository.scan(image).collect { progress ->
-                when (progress) {
-                    is ScanProgress.Step -> _uiState.value = _uiState.value.copy(step = progress.step)
-                    is ScanProgress.Done -> {
-                        _uiState.value = CaptureUiState()
-                        _events.send(CaptureEvent.NavigateToReview(progress.document))
-                    }
-                    is ScanProgress.Failed -> {
-                        _uiState.value = CaptureUiState(error = progress.message)
-                    }
-                }
+            try {
+                val scan = ImageDecoding.decodeForScan(context, uri)
+                ScanSession.imagePath = ImageDecoding.cacheBitmap(context, scan.preview, "scan")
+                scan.preview.recycle()
+                _uiState.value = CaptureUiState()
+                _events.send(CaptureEvent.NavigateToEditor)
+            } catch (e: Exception) {
+                _uiState.value = CaptureUiState(error = e.message ?: "Failed to read image")
             }
         }
     }

@@ -1,6 +1,7 @@
 package com.kinonn.ocrmobile.data
 
 import com.kinonn.ocrmobile.core.model.DocumentType
+import com.kinonn.ocrmobile.core.model.OcrResult
 import com.kinonn.ocrmobile.core.model.ParsedDocument
 import com.kinonn.ocrmobile.core.ocr.OcrEngine
 import com.kinonn.ocrmobile.core.ocr.OcrImage
@@ -22,7 +23,7 @@ enum class ScanStep(val label: String) {
 
 sealed interface ScanProgress {
     data class Step(val step: ScanStep) : ScanProgress
-    data class Done(val document: ParsedDocument) : ScanProgress
+    data class Done(val document: ParsedDocument, val result: OcrResult) : ScanProgress
     data class Failed(val message: String) : ScanProgress
 }
 
@@ -52,7 +53,7 @@ class DefaultOcrRepository @Inject constructor(
         emit(ScanProgress.Step(ScanStep.RECOGNIZING))
         val type = extractor.detectDocumentType(result, DocumentType.entries)
         emit(ScanProgress.Step(ScanStep.PARSING))
-        emit(ScanProgress.Done(extractor.parse(result, type)))
+        emit(ScanProgress.Done(extractor.parse(result, type), result))
     }
         .flowOn(Dispatchers.Default)
         .catch { error ->

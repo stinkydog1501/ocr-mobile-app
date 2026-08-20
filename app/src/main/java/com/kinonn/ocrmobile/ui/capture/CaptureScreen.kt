@@ -5,13 +5,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
-import androidx.camera.core.ProcessCameraProvider
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -37,7 +36,6 @@ import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,12 +56,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.StrokeCap
-import androidx.compose.ui.graphics.drawscope.StrokeJoin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -71,23 +68,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kinonn.ocrmobile.R
-import com.kinonn.ocrmobile.core.model.ParsedDocument
-import com.kinonn.ocrmobile.data.ScanStep
-import com.kinonn.ocrmobile.util.ImageDecoding
 import java.io.File
-import kotlinx.coroutines.launch
 
 private const val TAG = "CaptureScreen"
 
 @Composable
 fun CaptureScreen(
-    onDocumentReady: (ParsedDocument) -> Unit,
+    onReadyForEdit: () -> Unit,
     viewModel: CaptureViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -100,16 +92,10 @@ fun CaptureScreen(
     ) { granted -> hasCameraPermission = granted }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia()
+        ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null && !uiState.isProcessing) {
-            scope.launch {
-                try {
-                    viewModel.scan(ImageDecoding.decodeToOcrImage(context, uri))
-                } catch (e: Exception) {
-                    viewModel.reportCaptureError(e.message ?: "Failed to read image")
-                }
-            }
+            viewModel.onImagePicked(context, uri)
         }
     }
 
@@ -134,17 +120,8 @@ fun CaptureScreen(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(results: ImageCapture.OutputFileResults) {
-                    scope.launch {
-                        try {
-                            // Decode synchronously into memory, then delete the temp file
-                            val image = ImageDecoding.decodeToOcrImage(context, Uri.fromFile(file))
-                            file.delete()
-                            viewModel.scan(image)
-                        } catch (e: Exception) {
-                            file.delete()
-                            viewModel.reportCaptureError(e.message ?: "Failed to read captured image")
-                        }
-                    }
+                    // Move into the edit step; the VM decodes + caches the preview.
+                    viewModel.onImagePicked(context, Uri.fromFile(file))
                 }
 
                 override fun onError(exception: ImageCaptureException) {
@@ -187,7 +164,7 @@ fun CaptureScreen(
         }
         cameraProviderFuture.addListener(listener, executor)
         onDispose {
-            cameraProviderFuture.removeListener(listener)
+            // CameraX's ListenableFuture has no removeListener; unbind instead.
             runCatching { cameraProviderFuture.get().unbindAll() }
         }
     }
@@ -195,7 +172,7 @@ fun CaptureScreen(
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is CaptureEvent.NavigateToReview -> onDocumentReady(event.document)
+                is CaptureEvent.NavigateToEditor -> onReadyForEdit()
             }
         }
     }
@@ -226,20 +203,18 @@ fun CaptureScreen(
                         IconButton(onClick = { toggleFlash() }) {
                             Icon(
                                 imageVector = if (flashOn) Icons.Filled.FlashOn else Icons.Filled.FlashOff,
-                                contentDescription = "Toggle flash",
+                                contentDescription = stringResource(R.string.toggle_flash),
                                 tint = Color.White,
                             )
                         }
                         IconButton(
                             onClick = {
-                                galleryLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly())
-                                )
+                                galleryLauncher.launch("image/*")
                             }
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.PhotoLibrary,
-                                contentDescription = "Pick from gallery",
+                                contentDescription = stringResource(R.string.pick_from_gallery),
                                 tint = Color.White,
                             )
                         }
@@ -266,12 +241,16 @@ fun CaptureScreen(
             }
 
             if (uiState.isProcessing) {
-                ProcessingOverlay(step = uiState.step)
+                ProcessingOverlay()
             }
 
             uiState.error?.let { message ->
                 ErrorCard(
                     message = message,
+                    onRetry = {
+                        viewModel.clearError()
+                        permissionLauncher.launch(Manifest.permission.CAMERA)
+                    },
                     onDismiss = viewModel::clearError,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -343,7 +322,7 @@ private fun DocumentGuideOverlay() {
 }
 
 @Composable
-private fun ProcessingOverlay(step: ScanStep?) {
+private fun ProcessingOverlay() {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -361,15 +340,12 @@ private fun ProcessingOverlay(step: ScanStep?) {
                     .padding(vertical = 32.dp, horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(20.dp))
                 Text(stringResource(R.string.processing_title), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = step?.label ?: stringResource(R.string.processing_preparing),
+                    text = stringResource(R.string.processing_preparing),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -406,7 +382,7 @@ private fun PermissionRequest(onRequest: () -> Unit) {
                     text = stringResource(R.string.permission_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(onClick = onRequest) {
@@ -418,23 +394,33 @@ private fun PermissionRequest(onRequest: () -> Unit) {
 }
 
 @Composable
-private fun ErrorCard(message: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+private fun ErrorCard(
+    message: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier = modifier.fillMaxWidth(0.85f),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = message,
-                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dismiss))
+            Spacer(Modifier.height(12.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onRetry) {
+                    Text(stringResource(R.string.retry))
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.dismiss))
+                }
             }
         }
     }

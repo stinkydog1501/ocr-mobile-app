@@ -1,12 +1,16 @@
 package com.kinonn.ocrmobile.ui.review
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -38,21 +44,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kinonn.ocrmobile.R
+import com.kinonn.ocrmobile.core.model.BoundingBox
 import com.kinonn.ocrmobile.ui.theme.ConfidenceHigh
 import com.kinonn.ocrmobile.ui.theme.ConfidenceMedium
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,6 +121,8 @@ fun ReviewScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            PreviewWithOverlay(imagePath = uiState.imagePath, blocks = uiState.blocks)
+
             SummaryHeader(uiState)
 
             if (uiState.needsReview) {
@@ -115,6 +134,48 @@ fun ReviewScreen(
             }
 
             RawTextCard(rawText = uiState.rawText)
+        }
+    }
+}
+
+/** The scanned image with detected text boxes drawn over it (Feature A). */
+@Composable
+private fun PreviewWithOverlay(imagePath: String?, blocks: List<BoundingBox>) {
+    if (imagePath == null || blocks.isEmpty()) return
+    val bitmap by produceState<Bitmap?>(initialValue = null, imagePath) {
+        value = runCatching { BitmapFactory.decodeFile(imagePath) }.getOrNull()
+    }
+    val bmp = bitmap ?: return
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp),
+    ) {
+        // Fit the bitmap into the canvas, centred, preserving aspect ratio.
+        val scale = minOf(size.width / bmp.width, size.height / bmp.height)
+        val dw = bmp.width * scale
+        val dh = bmp.height * scale
+        val ox = (size.width - dw) / 2f
+        val oy = (size.height - dh) / 2f
+        drawImage(
+            image = bmp.asImageBitmap(),
+            dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+            dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
+        )
+        // Overlay the recognized text boxes (normalized -> display coords).
+        val boxColor = Color(0xFF4A5FC1)
+        val stroke = 2.dp.toPx()
+        blocks.forEach { b ->
+            val l = ox + b.left * dw
+            val t = oy + b.top * dh
+            val r = ox + b.right * dw
+            val bt = oy + b.bottom * dh
+            drawRect(
+                color = boxColor,
+                topLeft = Offset(l, t),
+                size = Size((r - l).coerceAtLeast(0f), (bt - t).coerceAtLeast(0f)),
+                style = Stroke(width = stroke),
+            )
         }
     }
 }
