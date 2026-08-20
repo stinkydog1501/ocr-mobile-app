@@ -52,7 +52,11 @@ fun AppNavHost() {
                 navArgument(Routes.REVIEW_ARG_BLOCKS) { type = NavType.StringType },
             ),
         ) {
-            ReviewScreen(onRetake = { navController.popBackStack() })
+            ReviewScreen(onRetake = {
+                // "Retake" means a fresh photo: pop back to Capture, not the
+                // previous Edit step (which keeps the current image).
+                navController.popBackStack(Routes.CAPTURE, inclusive = false)
+            })
         }
     }
 }
