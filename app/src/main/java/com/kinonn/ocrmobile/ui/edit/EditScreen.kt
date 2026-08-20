@@ -47,14 +47,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kinonn.ocrmobile.R
-import kotlin.math.max
-import kotlin.math.min
 
 private const val TAG = "EditScreen"
 
@@ -77,6 +77,10 @@ fun EditScreen(
     LaunchedEffect(Unit) { viewModel.loadFromSession() }
 
     var crop by remember { mutableStateOf(CropRect()) }
+
+    // The display size (px) of the Box the image is fitted into; lets the crop
+    // overlay align with the letterboxed image (see the image Box below).
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -123,7 +127,8 @@ fun EditScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .background(Color.Black.copy(alpha = 0.05f), RoundedCornerShape(12.dp)),
+                            .background(Color.Black.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                            .onSizeChanged { boxSize = it },
                         contentAlignment = Alignment.Center,
                     ) {
                         Image(
@@ -132,10 +137,27 @@ fun EditScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit,
                         )
-                        CropOverlay(
-                            crop = crop,
-                            onCropChange = { crop = it },
-                        )
+                        // Compute the image's drawn (fitted) rect so the crop
+                        // overlay maps onto the image, not the whole Box.
+                        val bw = bitmap.width.toFloat()
+                        val bh = bitmap.height.toFloat()
+                        if (boxSize.width > 0 && boxSize.height > 0 && bw > 0 && bh > 0) {
+                            val boxW = boxSize.width.toFloat()
+                            val boxH = boxSize.height.toFloat()
+                            val scale = minOf(boxW / bw, boxH / bh)
+                            val drawW = bw * scale
+                            val drawH = bh * scale
+                            val ox = (boxW - drawW) / 2f
+                            val oy = (boxH - drawH) / 2f
+                            CropOverlay(
+                                crop = crop,
+                                imageW = drawW,
+                                imageH = drawH,
+                                offsetX = ox,
+                                offsetY = oy,
+                                onCropChange = { crop = it },
+                            )
+                        }
                     }
 
                     EditControls(
@@ -184,15 +206,20 @@ fun EditScreen(
     }
 }
 
-/** Draws the crop box and handles drag gestures to resize/reposition it. */
+/** Draws the crop box over the fitted image and handles drag gestures. */
 @Composable
 private fun CropOverlay(
     crop: CropRect,
+    imageW: Float,   // drawn (fitted) image width in box px
+    imageH: Float,   // drawn image height in box px
+    offsetX: Float,  // left edge of the drawn image within the box
+    offsetY: Float,  // top edge of the drawn image within the box
     onCropChange: (CropRect) -> Unit,
 ) {
     var state by remember { mutableStateOf(crop) }
     var mode by remember { mutableStateOf<CropDragMode>(CropDragMode.None) }
     var dragStart by remember { mutableStateOf(CropRect()) }
+    var dragStartPos by remember { mutableStateOf(Offset.Zero) }
 
     // Sync internal state when the parent resets/externalizes the crop rect.
     androidx.compose.runtime.LaunchedEffect(crop.l, crop.t, crop.r, crop.b) {
@@ -202,15 +229,21 @@ private fun CropOverlay(
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(crop) {
+            .pointerInput(crop, imageW, imageH, offsetX, offsetY) {
                 detectDragGestures(
                     onDragStart = { pos ->
-                        val w = size.width.toFloat()
-                        val h = size.height.toFloat()
-                        val l = state.l * w
-                        val t = state.t * h
-                        val r = state.r * w
-                        val b = state.b * h
+                        // Pointer -> image-normalized fraction. Ignore taps
+                        // outside the drawn image (letterbox bars).
+                        val fx = (pos.x - offsetX) / imageW
+                        val fy = (pos.y - offsetY) / imageH
+                        if (fx < 0f || fy < 0f || fx > 1f || fy > 1f) {
+                            mode = CropDragMode.None
+                            return@detectDragGestures
+                        }
+                        val l = offsetX + state.l * imageW
+                        val t = offsetY + state.t * imageH
+                        val r = offsetX + state.r * imageW
+                        val b = offsetY + state.b * imageH
                         mode = when {
                             near(pos, l, t) -> CropDragMode.TopLeft
                             near(pos, r, t) -> CropDragMode.TopRight
@@ -220,36 +253,39 @@ private fun CropOverlay(
                             else -> CropDragMode.None
                         }
                         dragStart = state
+                        dragStartPos = Offset(fx, fy)
                     },
                     onDrag = { change, _ ->
-                        val w = size.width.toFloat()
-                        val h = size.height.toFloat()
                         change.consume()
-                        val (nx, ny) = change.position
-                        val fx = (nx / w).coerceIn(0f, 1f)
-                        val fy = (ny / h).coerceIn(0f, 1f)
+                        val fx = (change.position.x - offsetX) / imageW
+                        val fy = (change.position.y - offsetY) / imageH
                         val s = dragStart
                         when (mode) {
                             CropDragMode.TopLeft -> {
-                                state = CropRect(
-                                    min(fx, state.r), min(fy, state.b),
-                                    state.r, state.b,
-                                )
+                                val cx = fx.coerceIn(0f, state.r)
+                                val cy = fy.coerceIn(0f, state.b)
+                                state = CropRect(cx, cy, state.r, state.b)
                             }
                             CropDragMode.TopRight -> {
-                                state = CropRect(state.l, min(fy, state.b), max(fx, state.l), state.b)
+                                val cx = fx.coerceIn(state.l, 1f)
+                                val cy = fy.coerceIn(0f, state.b)
+                                state = CropRect(state.l, cy, cx, state.b)
                             }
                             CropDragMode.BottomRight -> {
-                                state = CropRect(state.l, state.t, max(fx, state.l), max(fy, state.t))
+                                val cx = fx.coerceIn(state.l, 1f)
+                                val cy = fy.coerceIn(state.t, 1f)
+                                state = CropRect(state.l, state.t, cx, cy)
                             }
                             CropDragMode.BottomLeft -> {
-                                state = CropRect(min(fx, state.r), state.t, state.r, max(fy, state.t))
+                                val cx = fx.coerceIn(0f, state.r)
+                                val cy = fy.coerceIn(state.t, 1f)
+                                state = CropRect(cx, state.t, state.r, cy)
                             }
                             CropDragMode.Move -> {
-                                val dw = fx - s.l
-                                val dh = fy - s.t
-                                val nl = (s.l + dw).coerceIn(0f, 1f)
-                                val nt = (s.t + dh).coerceIn(0f, 1f)
+                                val dx = fx - dragStartPos.x
+                                val dy = fy - dragStartPos.y
+                                val nl = (s.l + dx).coerceIn(0f, 1f)
+                                val nt = (s.t + dy).coerceIn(0f, 1f)
                                 state = CropRect(
                                     nl, nt,
                                     (nl + (s.r - s.l)).coerceAtMost(1f),
@@ -269,10 +305,11 @@ private fun CropOverlay(
         val h = size.height
         if (w == 0f || h == 0f) return@Canvas
 
-        val l = state.l * w
-        val t = state.t * h
-        val r = state.r * w
-        val b = state.b * h
+        // Image-normalized fractions -> drawn-image px within the box.
+        val l = offsetX + state.l * imageW
+        val t = offsetY + state.t * imageH
+        val r = offsetX + state.r * imageW
+        val b = offsetY + state.b * imageH
         val dim = Color.Black.copy(alpha = 0.5f)
         val accent = Color(0xFF4A5FC1)
 
@@ -286,7 +323,7 @@ private fun CropOverlay(
         drawRect(
             color = Color.White,
             topLeft = Offset(l, t),
-            size = Size(r - l, b - t),
+            size = Size((r - l).coerceAtLeast(0f), (b - t).coerceAtLeast(0f)),
             style = Stroke(width = 2.dp.toPx()),
         )
         // Rule-of-thirds grid.
