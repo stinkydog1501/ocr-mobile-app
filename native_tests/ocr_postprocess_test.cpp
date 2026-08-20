@@ -97,6 +97,18 @@ void test_box_score() {
     Box outside{{90, 90}, 5, 5, 0};
     CHECK_NEAR(ocrpp::box_score(prob.data(), W, H, outside), 0.2f, 0.02f);
 
+    // Mean over the WHOLE box mask: a box that partly overlaps background must
+    // score lower than its high-prob pixels alone. This locks the PaddleOCR
+    // box_score_fast behavior (background near-zeros are included).
+    {
+        std::vector<float> sparse(W * H, 0.0f);
+        for (int y = 40; y < 60; ++y)
+            for (int x = 25; x < 75; ++x) sparse[y * W + x] = 1.0f;
+        Box whole{{50, 50}, 100, 100, 0};  // spans the full map
+        // band = 50x20 = 1000 px @1.0 inside a 100x100 = 10000 px box -> mean 0.1
+        CHECK_NEAR(ocrpp::box_score(sparse.data(), W, H, whole), 0.1f, 0.005f);
+    }
+
     // Degenerate box → 0 (no positive pixels).
     Box tiny{{0, 0}, 1, 1, 0};
     (void)tiny;

@@ -146,11 +146,11 @@ inline float box_score(const float* prob, int pw, int ph, const Box& b) {
         for (int x = x0; x <= x1; ++x) {
             if (x < 0 || x >= pw || y < 0 || y >= ph) continue;
             if (point_in_box(b, static_cast<float>(x), static_cast<float>(y))) {
-                const float v = prob[y * pw + x];
-                if (v > 0) {  // only score foreground pixels, matching PaddleOCR
-                    sum += v;
-                    ++count;
-                }
+                // Mean over ALL pixels inside the box mask (matches PaddleOCR's
+                // BoxScoreFast / cv2.mean over the polygon mask): background
+                // near-zero pixels are included, which keeps scores discriminative.
+                sum += prob[y * pw + x];
+                ++count;
             }
         }
     }
